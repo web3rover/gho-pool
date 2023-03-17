@@ -54,7 +54,7 @@ userBorrowInterest = borrowIndex - userBorrowIndex * userBorrowBalance
 userSupplyInterest = supplyIndex - userSupplyIndex * userSupplyBalance
 ```
 
-Finally when user repays the borrow we reset the totalSupplyInterestAccrued and totalBorrowInterestAccrued to current pool interest so that we consider only newly accrued interest after the repay:
+Finally when a user repay it's borrowed tokens we reduce `totalSupplyInterestAccrued` and `totalBorrowInterestAccrued` by setting them to current pool interest:
 
 ```
 totalBorrowInterest = borrowBalanceFromVToken - totalBorrowOfUsers
