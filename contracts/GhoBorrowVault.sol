@@ -12,6 +12,24 @@ import "./interfaces/IGhoBorrowVault.sol";
 contract GhoBorrowVault is OwnableUpgradeable, IGhoBorrowVault {
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
+    /// @notice 1 in fixed-point representation 
+    uint256 internal constant EXP_SCALE = 1e18;
+
+    /// @notice initial index value
+    uint256 internal constant INITIAL_INDEX = 1e18;
+
+    /// @notice represents 100% basis point
+    uint256 internal constant MAXIMUM_BPS = 10000;
+
+    /// @notice Loan To Value basis point. Value = 50%
+    uint256 public constant LTV_BPS = 5000;
+
+    /// @notice Liquidation Threshold basis point. Value = 60%
+    uint256 public constant LT_BPS = 6000; // 60%
+
+    /// @notice Liquidation Penalty basis point. Value = 1%
+    uint256 public constant LP_BPS = 100; // 1%
+
     /// @notice GHO interest rate mode
     uint256 constant GHO_INTEREST_RATE_STRATEGY = 2;
     
@@ -35,22 +53,7 @@ contract GhoBorrowVault is OwnableUpgradeable, IGhoBorrowVault {
 
     /// @notice address of Aave oracle contract
     IPriceOracle public oracle;
-
-    /// @notice initial index value
-    uint256 internal constant INITIAL_INDEX = 1e18;
-
-    /// @notice represents 100% basis point
-    uint256 internal constant MAXIMUM_BPS = 10000;
-
-    /// @notice Loan To Value basis point. Value = 50%
-    uint256 public constant LTV_BPS = 5000;
-
-    /// @notice Liquidation Threshold basis point. Value = 60%
-    uint256 public constant LT_BPS = 6000; // 60%
-
-    /// @notice Liquidation Penalty basis point. Value = 1%
-    uint256 public constant LP_BPS = 100; // 1%
-
+    
     /// @notice toll amount required to enter the pool
     uint256 public toll;
 
@@ -260,7 +263,8 @@ contract GhoBorrowVault is OwnableUpgradeable, IGhoBorrowVault {
     }
 
     /**
-     * @notice accrues interest and splits the interest proportionally among the users
+     * @notice calculates the new debt/supply interest accrued since last accrual and splits the interest proportionally among the users
+     * It calculate interest per supply and borrow token and adds it to global supply and borrow indexes respectively
      */
     function accrueInterest() public {
         uint256 borrowBalance = vGHO.balanceOf(address(this));
@@ -283,7 +287,7 @@ contract GhoBorrowVault is OwnableUpgradeable, IGhoBorrowVault {
     }
 
     /**
-     * @notice updates the total interest accrued
+     * @notice updates record of last supply/borrow interest accrual to current supply/borrow interest 
      */
     function _updateInterestAccrued() internal {
         uint256 borrowBalance = vGHO.balanceOf(address(this));
