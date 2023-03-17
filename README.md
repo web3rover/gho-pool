@@ -61,16 +61,16 @@ Suppose a user supplies 10 WETH then here is the metrics:
 ```
 Total Supply: 10 WETH
 WETH Price: $4000
-Total Supply in USD: 40,000 WETH
+Total Supply in USD: 40,000 
 Total Borrow (50% of total supply): 20,000 GHO
 ```
 
-Now uppose the price of WETH drops to $3500 then:
+Now suppose the price of WETH drops to $3500 then:
 
 ```
 Total Supply: 10 WETH
 WETH Price: $3500
-Total Supply in USD: 35,000 WETH
+Total Supply in USD: 35,000 
 Total Borrow: 20,000 GHO
 Liquidation Threshold (60%) = 60% of (total supply in USD) = 21,000 
 ```
@@ -82,7 +82,7 @@ Now suppose price drops to $3000 then:
 ```
 Total Supply: 10 WETH
 WETH Price: $3000
-Total Supply in USD: 30,000 WETH
+Total Supply in USD: 30,000 
 Total Borrow: 20,000 GHO
 Liquidation Threshold (60%) = 60% of (total supply in USD) = 18,000
 ```
