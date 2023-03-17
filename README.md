@@ -11,31 +11,24 @@ npx hardhat test
 
 ## Technical Spec
 
-The idea is to design a smart contract that will allow users to pool together their stkAAVE to get better discount on GHO borrows. AAVE pool natively doesn't allow this feature so we need to design a custom solution.
+The idea is to design a smart contract that will allow users to pool together their stkAAVE to get better discount on GHO borrows.
 
-The StakedTokenV2Rev4 contract automatically applies discount to borrow rate in vGHO for accounts that hold stkAAVE. Whenever accounts stkAAVE balances change it automatically adjusts the borrow rate for GHO. 
+The `StakedTokenV2Rev4` contract automatically applies discount to borrow rate in vGHO for accounts that hold stkAAVE. Whenever a account's stkAAVE balance changes it will automatically adjusts the borrow rate for GHO. 
 
-We will cretae a GhoBorrowVault contract that will act as a custody for stkAAVE tokens of the users who want to pool together. Now GhoDiscountRateStrategy will provide discount to the contract address as the contract owns the tokens. Therefore we need to build a mechanism such that the contract will supply/borrow onbehalf of users. From AAVE point of view it's just one user supplying and borrowing. 
+We will create a `GhoBorrowVault` contract that will act as a custody for stkAAVE tokens of the users who want to pool together. Now `GhoDiscountRateStrategy` will provide discount to the contract address as the contract owns the tokens. Therefore we need to build a mechanism such that the contract will supply/borrow onbehalf of users. From AAVE point of view it's just one user supplying and borrowing. 
 
-For now we want to enable users to only deposit WETH as collateral and borrow GHO at 50% LTV ratio. So if a user supplies $100 worth of WETH it will give the user $50 worth of GHO. 1 GHO is always equals to $1 therefore it will send 50 GHO to the user. Similarly we will also allow the user to anytime return the borrowed GHO and claim back the total collateral. 
+For now we want to enable users to only deposit WETH as collateral and borrow GHO at 50% LTV ratio. So if a user supplies $100 worth of WETH to the contract then it will give the user $50 worth of GHO. 1 GHO is always equals to $1 therefore it will send 50 GHO to the user. Similarly we will also allow the user to anytime repay the borrowed GHO and withdraw back the total collateral. 
 
 ### Supply and Borrow Interest
 
-When you supply to aToken or borrow from vToken there is a interest accrued real time. The `balanceOf` method of aToken and vToken return principal amount + interest. The amount this function returns keeps increasing every block. We need to find a way to calculate each individual users supply and borrow interest based on their supply and borrow. To achieve this we will use indexes based interest distribution mechanism.
+When you supply to aToken or borrow from vToken there is a interest accrued real time. The `balanceOf` method of aToken and vToken return `principal + interest`. The amount this function returns keeps increasing real time. We need to find a way to calculate each individual users supply and borrow interest based on their supply and borrow. To achieve this we will use indexes based interest distribution mechanism.
 
-So basically whenever there is a deposit/borrow/stake to the GhoBorrowVault contract we will find out the total borrow and supply interest on the total holdings. And then divide it by total borrow and supply respectively. This way we will get interest per borrowed and supplied token. 
-
-```
-globalBorrowIndex += totalBorrowInterest / totalBorrows
-globalSupplyIndex += totalSupplyInterest / totalSupply
-
-totalSupplyInterestAccrued = totalSupplyInterest
-totalBorrowInterestAccrued = totalBorrowInterest
-```
-
-The total supply and borrow interest will keep growing and when we update the index next time we only want to include the new interest accrued. That's why we record totalSupplyInterestAccrued and totalBorrowInterestAccrued. And next time when calculating indexes we can use the newly accrued interest as such:
+So basically whenever there is a operation (deposit/withdraw/stake) that could impact the interest rate of the `GhoBorrowVault` contract in the eyes of AAVE, we will perform the following:
 
 ```
+totalBorrowInterest = borrowBalanceFromVToken - totalBorrowOfUsers
+totalSupplyInterest = supplyBalanceFromAToken - totalSupplyOfUsers
+
 globalBorrowIndex += (totalBorrowInterest - totalBorrowInterestAccrued) / totalBorrows
 globalSupplyIndex += (totalSupplyInterest - totalSupplyInterestAccrued) / totalSupply
 
@@ -43,14 +36,33 @@ totalSupplyInterestAccrued = totalSupplyInterest
 totalBorrowInterestAccrued = totalBorrowInterest
 ```
 
-And when a user starts borrowing from the vault, we record the global indexes for the user. Then when calculating the interest for the user we don't charge the previous interest accrued before the user joined the vault. 
+So here first we find out the total borrow and supply interest on the total holdings. And then divide it by total borrow and supply respectively. This way we will get interest per borrowed and supplied token. This per token interest accumulation is the indexes. 
+
+We also keep track of the total interest accrued in the variables `totalSupplyInterestAccrued` and `totalBorrowInterestAccrued` so that we don't accumulate the same interest again.
+
+And when a user starts to deposit in the vault, we record the global indexes for the user. Then when calculating the interest for the user we don't charge the previous interest accrued before the user joined the vault. 
 
 ```
 userBorrowIndex = globalBorrowIndex
 userSupplyIndex = userBorrowIndex
 ```
 
-Finally when user repays the borrow we rebase the totalSupplyInterestAccrued and totalBorrowInterestAccrued to current interest so that we consider only newly accrued interest after the repay for distribution among users
+So user interest is calculated as such:
+
+```
+userBorrowInterest = borrowIndex - userBorrowIndex * userBorrowBalance
+userSupplyInterest = supplyIndex - userSupplyIndex * userSupplyBalance
+```
+
+Finally when user repays the borrow we reset the totalSupplyInterestAccrued and totalBorrowInterestAccrued to current pool interest so that we consider only newly accrued interest after the repay:
+
+```
+totalBorrowInterest = borrowBalanceFromVToken - totalBorrowOfUsers
+totalSupplyInterest = supplyBalanceFromAToken - totalSupplyOfUsers
+
+totalSupplyInterestAccrued = totalSupplyInterest
+totalBorrowInterestAccrued = totalBorrowInterest
+```
 
 ### Liquidation
 
@@ -87,7 +99,7 @@ Total Borrow: 20,000 GHO
 Liquidation Threshold (60%) = 60% of (total supply in USD) = 18,000
 ```
 
-In this case the total borrow allowed is 18,000 GHO whereas user has borrwed 20,000 GHO therefore anyone can liquidate the user account. Here is the balances calculations for liquidations:
+In this case the total borrow allowed is 18,000 GHO whereas user has borrwed 20,000 GHO therefore anyone can liquidate the user account by repaying the total debt. Here is the balances calculations for liquidations:
 
 ```
 Repay Amount (100%) = 20,000 GHO
