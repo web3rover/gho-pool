@@ -4,18 +4,18 @@ import { GhoBorrowVault, GhoBorrowVault__factory, IAaveOracle__factory, IERC20__
 import { expect } from "chai";
 
 const POOL_ADDRESS = "0x617Cf26407193E32a771264fB5e9b8f09715CdfB"
-const GHO_UNDERLYING_ADDRESS = "0xcbE9771eD31e761b744D3cB9eF78A1f32DD99211"
+const GHO_ADDRESS = "0xcbE9771eD31e761b744D3cB9eF78A1f32DD99211"
 const WETH_ADDRESS = "0x84ced17d95F3EC7230bAf4a369F1e624Ae60090d"
 const stkAAVE_ADDRESS = "0xb85B34C58129a9a7d54149e86934ed3922b05592"
 const ORACLE_ADDRESS = "0xcb601629B36891c43943e3CDa2eB18FAc38B5c4e"
 const aWETH_ADDRESS = "0x49871B521E44cb4a34b2bF2cbCF03C1CF895C48b"
+const vGHO_ADDRESS = "0x80aa933EfF12213022Fd3d17c2c59C066cBb91c7"
 
 const WETH_FAUCET_ADDRESS = "0x5c4220e10d0D835e9eDf04061379dED26E845bA8"
 const POOL_ADMIN = "0x2892e37624Ec31CC42502f297821109700270971"
 const stkAAVE_FAUCET_ADDRESS = "0xc1aB66d22a76E7C5D71B7CF22cec878987b9847B"
 const GHO_FAUCET_ADDRESS = "0x40D17dAdcDE03776F1bCb27297c108A788c59Edc"
 
-const GBH_INTEREST_RATE_STRATEGY = 2
 const BIGNUMBER8 = ethers.BigNumber.from("100000000"); // 1e8
 
 const toWei = (amount: string): string => {
@@ -53,7 +53,7 @@ describe("GHOBorrowVault", function () {
 
     const pool = await IPool__factory.connect(POOL_ADDRESS, ethers.provider)
     const weth = await IERC20__factory.connect(WETH_ADDRESS, ethers.provider)
-    const gho = await IERC20__factory.connect(GHO_UNDERLYING_ADDRESS, ethers.provider)
+    const gho = await IERC20__factory.connect(GHO_ADDRESS, ethers.provider)
     const aWETH = await IERC20__factory.connect(aWETH_ADDRESS, ethers.provider)
     const stkAAVE = await IERC20__factory.connect(stkAAVE_ADDRESS, ethers.provider)
     const oracle = await IAaveOracle__factory.connect(ORACLE_ADDRESS, ethers.provider)
@@ -66,7 +66,14 @@ describe("GHOBorrowVault", function () {
     const ghoBorrowVault:GhoBorrowVault  = <GhoBorrowVault> await upgrades.deployProxy(
       GhoBorrowVaultFactory, 
       [
-        toWei("100")
+        toWei("100"),
+        stkAAVE_ADDRESS,
+        POOL_ADDRESS,
+        WETH_ADDRESS,
+        aWETH_ADDRESS,
+        vGHO_ADDRESS,
+        GHO_ADDRESS,
+        ORACLE_ADDRESS
       ]
     )
 

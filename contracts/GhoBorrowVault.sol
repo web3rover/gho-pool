@@ -7,19 +7,20 @@ import "./interfaces/IPool.sol";
 import "./interfaces/IAToken.sol";
 import "./interfaces/IVariableDebtToken.sol";
 import "./interfaces/IPriceOracle.sol";
+import "./interfaces/IGhoBorrowVault.sol";
 
-import "hardhat/console.sol";
-
-contract GhoBorrowVault is OwnableUpgradeable {
+contract GhoBorrowVault is OwnableUpgradeable, IGhoBorrowVault {
     using SafeERC20Upgradeable for IERC20Upgradeable;
+
+    uint256 constant GHO_INTEREST_RATE_STRATEGY = 2;
     
-    IERC20Upgradeable constant stkAAVE = IERC20Upgradeable(0xb85B34C58129a9a7d54149e86934ed3922b05592);
-    IPool constant Pool = IPool(0x617Cf26407193E32a771264fB5e9b8f09715CdfB);
-    IERC20Upgradeable constant WETH = IERC20Upgradeable(0x84ced17d95F3EC7230bAf4a369F1e624Ae60090d);
-    IAToken constant aWETH = IAToken(0x49871B521E44cb4a34b2bF2cbCF03C1CF895C48b);
-    IVariableDebtToken constant vGHO = IVariableDebtToken(0x80aa933EfF12213022Fd3d17c2c59C066cBb91c7);
-    IERC20Upgradeable constant GHO = IERC20Upgradeable(0xcbE9771eD31e761b744D3cB9eF78A1f32DD99211);
-    IPriceOracle constant oracle = IPriceOracle(0xcb601629B36891c43943e3CDa2eB18FAc38B5c4e);
+    IERC20Upgradeable public stkAAVE;
+    IPool public Pool;
+    IERC20Upgradeable public WETH;
+    IAToken public aWETH;
+    IVariableDebtToken public vGHO;
+    IERC20Upgradeable public GHO;
+    IPriceOracle public oracle;
 
     uint256 internal constant INITIAL_INDEX = 1e18;
     uint256 internal constant MAXIMUM_BPS = 10000;
@@ -47,25 +48,46 @@ contract GhoBorrowVault is OwnableUpgradeable {
     uint256 public totalBorrow;
 
     function initialize(
-        uint256 _toll
+        uint256 _toll,
+        address _stkAAVE,
+        address _Pool,
+        address _WETH,
+        address _aWETH,
+        address _vGHO,
+        address _GHO,
+        address _oracle
     ) external initializer {
         toll = _toll;
         supplyIndex = INITIAL_INDEX;
         borrowIndex = INITIAL_INDEX;
         totalSupplyInterestAccrued = 0;
         totalBorrowInterestAccrued = 0;
+
+        stkAAVE = IERC20Upgradeable(_stkAAVE);
+        Pool =  IPool(_Pool);
+        WETH = IERC20Upgradeable(_WETH);
+        aWETH = IAToken(_aWETH);
+        vGHO = IVariableDebtToken(_vGHO);
+        GHO = IERC20Upgradeable(_GHO);
+        oracle = IPriceOracle(_oracle);
+
         __Ownable_init();
     }
 
+    /// @inheritdoc IGhoBorrowVault
     function setToll(uint256 _toll) external onlyOwner {
         toll = _toll;
     }
 
+     /// @inheritdoc IGhoBorrowVault
     function getToll() external view returns(uint256) {
         return toll;
     }
 
+     /// @inheritdoc IGhoBorrowVault
     function enter() external {
+        accrueInterest();
+
         AccountInfo storage account = accounts[msg.sender];
         require(account.toll == 0, "you are already participating in vault");
 
@@ -73,7 +95,10 @@ contract GhoBorrowVault is OwnableUpgradeable {
         account.toll = toll;
     }
 
+     /// @inheritdoc IGhoBorrowVault
     function exit() external {
+        accrueInterest();
+
         AccountInfo storage account = accounts[msg.sender];
         require(account.toll != 0, "you are not participating in vault");
 
@@ -81,6 +106,7 @@ contract GhoBorrowVault is OwnableUpgradeable {
         account.toll = 0;
     }
 
+     /// @inheritdoc IGhoBorrowVault
     function open(uint256 amount) external {
         accrueInterest();
 
@@ -96,11 +122,14 @@ contract GhoBorrowVault is OwnableUpgradeable {
         account.supplyIndex = supplyIndex;
         totalSupply += amount;
 
-        uint256 assetPrice = oracle.getAssetPrice(address(WETH));
-        uint256 totalValueInGHO = ((assetPrice * amount) / 1e8);
-        uint256 totalGHOToBorrow = (totalValueInGHO * LTV_BPS) / MAXIMUM_BPS;
+        uint256 wethAssetPrice = oracle.getAssetPrice(address(WETH));
+        uint256 totalValueInUSD = ((wethAssetPrice * amount) / oracle.BASE_CURRENCY_UNIT());
+        uint256 totalUSDToBorrow = (totalValueInUSD * LTV_BPS) / MAXIMUM_BPS;
 
-        Pool.borrow(address(GHO), totalGHOToBorrow, 2, 0, address(this));
+        uint256 ghoAssetPrice = oracle.getAssetPrice(address(GHO));
+        uint256 totalGHOToBorrow = (totalUSDToBorrow * oracle.BASE_CURRENCY_UNIT()) / ghoAssetPrice;
+
+        Pool.borrow(address(GHO), totalGHOToBorrow, GHO_INTEREST_RATE_STRATEGY, 0, address(this));
         GHO.safeTransfer(msg.sender, totalGHOToBorrow); 
 
         account.borrow = totalGHOToBorrow;
@@ -108,6 +137,7 @@ contract GhoBorrowVault is OwnableUpgradeable {
         totalBorrow += totalGHOToBorrow;
     }
 
+     /// @inheritdoc IGhoBorrowVault
     function close() external {
         accrueInterest();
 
@@ -119,7 +149,7 @@ contract GhoBorrowVault is OwnableUpgradeable {
 
         GHO.safeTransferFrom(msg.sender, address(this), borrowBalance);
         GHO.safeApprove(address(Pool), borrowBalance);
-        Pool.repay(address(GHO), borrowBalance, 2, address(this));
+        Pool.repay(address(GHO), borrowBalance, GHO_INTEREST_RATE_STRATEGY, address(this));
 
         totalBorrow -= account.borrow;
         account.borrow = 0;
@@ -135,6 +165,7 @@ contract GhoBorrowVault is OwnableUpgradeable {
         _updateInterestAccrued();
     }
 
+     /// @inheritdoc IGhoBorrowVault
     function liquidate(address user) external {
         accrueInterest();
 
@@ -144,22 +175,24 @@ contract GhoBorrowVault is OwnableUpgradeable {
 
         (uint borrowBalance, uint supplyBalance) = balanceOf(user);
 
-        uint256 assetPrice = oracle.getAssetPrice(address(WETH));
-        uint256 totalValueInGHO = ((assetPrice * supplyBalance) / 1e8);
-        uint256 threshold = (borrowBalance * MAXIMUM_BPS) / totalValueInGHO;
+        uint256 wethAssetPrice = oracle.getAssetPrice(address(WETH));
+        uint256 ghoAssetPrice = oracle.getAssetPrice(address(GHO));
+        uint256 totalSupplyValueInUSD = ((wethAssetPrice * supplyBalance) / oracle.BASE_CURRENCY_UNIT());
+        uint256 totalBorrowValueInUSD = ((ghoAssetPrice * borrowBalance) / oracle.BASE_CURRENCY_UNIT());
+        uint256 ratio = (totalBorrowValueInUSD * MAXIMUM_BPS) / totalSupplyValueInUSD;
 
-        require(threshold > LT_BPS, "account hasn't reached liquidation threshold");
+        require(ratio > LT_BPS, "account hasn't reached liquidation threshold");
 
         GHO.safeTransferFrom(msg.sender, address(this), borrowBalance);
         GHO.safeApprove(address(Pool), borrowBalance);
-        Pool.repay(address(GHO), borrowBalance, 2, address(this));
+        Pool.repay(address(GHO), borrowBalance, GHO_INTEREST_RATE_STRATEGY, address(this));
 
         totalBorrow -= account.borrow;
         account.borrow = 0;
         account.borrowIndex = 0;
 
         Pool.withdraw(address(WETH), supplyBalance, address(this));
-        uint256 borrowValueInWETH = (borrowBalance * oracle.BASE_CURRENCY_UNIT()) / assetPrice;
+        uint256 borrowValueInWETH = (((ghoAssetPrice * oracle.BASE_CURRENCY_UNIT() / wethAssetPrice)) * borrowBalance) / 1e18;
         uint256 liquidationPenalty = (borrowValueInWETH * LP_BPS) / MAXIMUM_BPS;
         WETH.safeTransfer(msg.sender, borrowValueInWETH + liquidationPenalty);
         WETH.safeTransfer(user, supplyBalance - borrowValueInWETH - liquidationPenalty);
