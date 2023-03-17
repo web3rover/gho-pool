@@ -1,13 +1,10 @@
-# Sample Hardhat Project
+# AAVE GHO Pool
 
-This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, and a script that deploys that contract.
+This project demonstrates design of smart contracts system that allows stkAave holders to sell their discount on GHO borrow rate.
 
-Try running some of the following tasks:
+To run the forked e2e tests you need to get RPC URL from Alchemy for Goerli testnet. Then copy it to the `.env.example` file. After than run the following command:
 
-```shell
-npx hardhat help
+```
+cp .env.example .env
 npx hardhat test
-REPORT_GAS=true npx hardhat test
-npx hardhat node
-npx hardhat run scripts/deploy.ts
 ```
