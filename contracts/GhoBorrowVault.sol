@@ -3,6 +3,7 @@ pragma solidity ^0.8.9;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/IERC20MetadataUpgradeable.sol";
 import "./interfaces/IPool.sol";
 import "./interfaces/IAToken.sol";
 import "./interfaces/IVariableDebtToken.sol";
@@ -10,7 +11,7 @@ import "./interfaces/IPriceOracle.sol";
 import "./interfaces/IGhoBorrowVault.sol";
 
 contract GhoBorrowVault is OwnableUpgradeable, IGhoBorrowVault {
-    using SafeERC20Upgradeable for IERC20Upgradeable;
+    using SafeERC20Upgradeable for IERC20MetadataUpgradeable;
 
     /// @notice initial index value
     uint256 internal constant INITIAL_INDEX = 1e18;
@@ -31,13 +32,13 @@ contract GhoBorrowVault is OwnableUpgradeable, IGhoBorrowVault {
     uint256 constant GHO_INTEREST_RATE_STRATEGY = 2;
     
     /// @notice address of stkAAVE contract
-    IERC20Upgradeable public stkAAVE;
+    IERC20MetadataUpgradeable public stkAAVE;
     
     /// @notice address of AAVE Pool contract
     IPool public Pool;
 
     /// @notice address of WETH token contract
-    IERC20Upgradeable public WETH;
+    IERC20MetadataUpgradeable public WETH;
 
     /// @notice address of WETH aToken contract
     IAToken public aWETH;
@@ -46,7 +47,7 @@ contract GhoBorrowVault is OwnableUpgradeable, IGhoBorrowVault {
     IVariableDebtToken public vGHO;
 
     /// @notice address of GHO token contract
-    IERC20Upgradeable public GHO;
+    IERC20MetadataUpgradeable public GHO;
 
     /// @notice address of Aave oracle contract
     IPriceOracle public oracle;
@@ -105,12 +106,12 @@ contract GhoBorrowVault is OwnableUpgradeable, IGhoBorrowVault {
         totalSupplyInterestAccrued = 0;
         totalBorrowInterestAccrued = 0;
 
-        stkAAVE = IERC20Upgradeable(_stkAAVE);
+        stkAAVE = IERC20MetadataUpgradeable(_stkAAVE);
         Pool =  IPool(_Pool);
-        WETH = IERC20Upgradeable(_WETH);
+        WETH = IERC20MetadataUpgradeable(_WETH);
         aWETH = IAToken(_aWETH);
         vGHO = IVariableDebtToken(_vGHO);
-        GHO = IERC20Upgradeable(_GHO);
+        GHO = IERC20MetadataUpgradeable(_GHO);
         oracle = IPriceOracle(_oracle);
 
         __Ownable_init();
@@ -240,7 +241,7 @@ contract GhoBorrowVault is OwnableUpgradeable, IGhoBorrowVault {
         account.supplyIndex = 0;
 
         Pool.withdraw(address(WETH), supplyBalance, address(this));
-        uint256 borrowValueInWETH = (((ghoAssetPrice * oracle.BASE_CURRENCY_UNIT() / wethAssetPrice)) * borrowBalance) / 1e18;
+        uint256 borrowValueInWETH = (((ghoAssetPrice * oracle.BASE_CURRENCY_UNIT() / wethAssetPrice)) * borrowBalance) / (10 ** WETH.decimals());
         uint256 liquidationPenalty = (borrowValueInWETH * LP_BPS) / MAXIMUM_BPS;
         WETH.safeTransfer(msg.sender, borrowValueInWETH + liquidationPenalty);
         WETH.safeTransfer(user, supplyBalance - borrowValueInWETH - liquidationPenalty);
@@ -256,8 +257,8 @@ contract GhoBorrowVault is OwnableUpgradeable, IGhoBorrowVault {
      */
     function balanceOf(address user) public view returns(uint256, uint256) {
         AccountInfo storage account = accounts[user];
-        uint256 borrowBalance = (((borrowIndex - account.borrowIndex) * account.borrow) / 1e18) + account.borrow;
-        uint256 supplyBalance = (((supplyIndex - account.supplyIndex) * account.supply) / 1e18) + account.supply;
+        uint256 borrowBalance = (((borrowIndex - account.borrowIndex) * account.borrow) / (10 ** GHO.decimals())) + account.borrow;
+        uint256 supplyBalance = (((supplyIndex - account.supplyIndex) * account.supply) / (10 ** WETH.decimals())) + account.supply;
         return (borrowBalance, supplyBalance); 
     }
 
@@ -271,7 +272,7 @@ contract GhoBorrowVault is OwnableUpgradeable, IGhoBorrowVault {
         if(borrowBalance > 0) {
             uint256 borrowInterest = borrowBalance - totalBorrow;
             uint256 splitBorrowInterest = borrowInterest - totalBorrowInterestAccrued;
-            uint256 borrowInterestPerToken = (splitBorrowInterest * 1e18) / totalBorrow;
+            uint256 borrowInterestPerToken = (splitBorrowInterest * (10 ** GHO.decimals())) / totalBorrow;
             borrowIndex += borrowInterestPerToken;
             totalBorrowInterestAccrued = borrowInterest;
         }
@@ -280,7 +281,7 @@ contract GhoBorrowVault is OwnableUpgradeable, IGhoBorrowVault {
         if(supplyBalance > 0) {
             uint256 supplyInterest = supplyBalance - totalSupply;
             uint256 splitSupplyInterest = supplyInterest - totalSupplyInterestAccrued;
-            uint256 supplyInterestPerToken = (splitSupplyInterest * 1e18) / totalSupply;
+            uint256 supplyInterestPerToken = (splitSupplyInterest * (10 ** WETH.decimals())) / totalSupply;
             supplyIndex += supplyInterestPerToken;
             totalSupplyInterestAccrued = supplyInterest;
         }
