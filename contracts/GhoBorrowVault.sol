@@ -136,8 +136,8 @@ contract GhoBorrowVault is OwnableUpgradeable, IGhoBorrowVault {
         AccountInfo storage account = accounts[msg.sender];
         require(account.toll == 0, "you are already participating in vault");
 
-        stkAAVE.safeTransferFrom(msg.sender, address(this), toll);
         account.toll = toll;
+        stkAAVE.safeTransferFrom(msg.sender, address(this), toll);
     }
 
      /// @inheritdoc IGhoBorrowVault
@@ -147,8 +147,9 @@ contract GhoBorrowVault is OwnableUpgradeable, IGhoBorrowVault {
         AccountInfo storage account = accounts[msg.sender];
         require(account.toll != 0, "you are not participating in vault");
 
-        stkAAVE.safeTransferFrom(address(this), msg.sender, account.toll);
+        uint256 toll = account.toll;
         account.toll = 0;
+        stkAAVE.safeTransferFrom(address(this), msg.sender, toll);
     }
 
      /// @inheritdoc IGhoBorrowVault
@@ -159,13 +160,14 @@ contract GhoBorrowVault is OwnableUpgradeable, IGhoBorrowVault {
         require(account.toll != 0, "you are not participating in vault");
         require(account.supply == 0, "you already have an open position");
 
-        WETH.safeTransferFrom(msg.sender, address(this), amount);
-        WETH.safeApprove(address(Pool), amount);
-        Pool.supply(address(WETH), amount, address(this), 0);
-
         account.supply = amount;
         account.supplyIndex = supplyIndex;
         totalSupply += amount;
+
+        WETH.safeTransferFrom(msg.sender, address(this), amount);
+        WETH.safeApprove(address(Pool), amount);
+        Pool.supply(address(WETH), amount, address(this), 0);
+        
 
         uint256 wethAssetPrice = oracle.getAssetPrice(address(WETH));
         uint256 totalValueInUSD = ((wethAssetPrice * amount) / oracle.BASE_CURRENCY_UNIT());
@@ -174,12 +176,12 @@ contract GhoBorrowVault is OwnableUpgradeable, IGhoBorrowVault {
         uint256 ghoAssetPrice = oracle.getAssetPrice(address(GHO));
         uint256 totalGHOToBorrow = (totalUSDToBorrow * oracle.BASE_CURRENCY_UNIT()) / ghoAssetPrice;
 
-        Pool.borrow(address(GHO), totalGHOToBorrow, GHO_INTEREST_RATE_STRATEGY, 0, address(this));
-        GHO.safeTransfer(msg.sender, totalGHOToBorrow); 
-
         account.borrow = totalGHOToBorrow;
         account.borrowIndex = borrowIndex;
         totalBorrow += totalGHOToBorrow;
+
+        Pool.borrow(address(GHO), totalGHOToBorrow, GHO_INTEREST_RATE_STRATEGY, 0, address(this));
+        GHO.safeTransfer(msg.sender, totalGHOToBorrow); 
     }
 
      /// @inheritdoc IGhoBorrowVault
@@ -192,20 +194,20 @@ contract GhoBorrowVault is OwnableUpgradeable, IGhoBorrowVault {
 
         (uint borrowBalance, uint supplyBalance) = balanceOf(msg.sender);
 
-        GHO.safeTransferFrom(msg.sender, address(this), borrowBalance);
-        GHO.safeApprove(address(Pool), borrowBalance);
-        Pool.repay(address(GHO), borrowBalance, GHO_INTEREST_RATE_STRATEGY, address(this));
-
         totalBorrow -= account.borrow;
         account.borrow = 0;
         account.borrowIndex = 0;
 
-        Pool.withdraw(address(WETH), supplyBalance, address(this));
-        WETH.safeTransfer(msg.sender, supplyBalance);
-        
+        GHO.safeTransferFrom(msg.sender, address(this), borrowBalance);
+        GHO.safeApprove(address(Pool), borrowBalance);
+        Pool.repay(address(GHO), borrowBalance, GHO_INTEREST_RATE_STRATEGY, address(this));
+
         totalSupply -= account.supply;
         account.supply = 0;
         account.supplyIndex = 0;
+        
+        Pool.withdraw(address(WETH), supplyBalance, address(this));
+        WETH.safeTransfer(msg.sender, supplyBalance);
 
         _updateInterestAccrued();
     }
@@ -228,23 +230,23 @@ contract GhoBorrowVault is OwnableUpgradeable, IGhoBorrowVault {
 
         require(ratio > LT_BPS, "account hasn't reached liquidation threshold");
 
+        totalBorrow -= account.borrow;
+        account.borrow = 0;
+        account.borrowIndex = 0;
+
         GHO.safeTransferFrom(msg.sender, address(this), borrowBalance);
         GHO.safeApprove(address(Pool), borrowBalance);
         Pool.repay(address(GHO), borrowBalance, GHO_INTEREST_RATE_STRATEGY, address(this));
 
-        totalBorrow -= account.borrow;
-        account.borrow = 0;
-        account.borrowIndex = 0;
+        totalSupply -= account.supply;
+        account.supply = 0;
+        account.supplyIndex = 0;
 
         Pool.withdraw(address(WETH), supplyBalance, address(this));
         uint256 borrowValueInWETH = (((ghoAssetPrice * oracle.BASE_CURRENCY_UNIT() / wethAssetPrice)) * borrowBalance) / 1e18;
         uint256 liquidationPenalty = (borrowValueInWETH * LP_BPS) / MAXIMUM_BPS;
         WETH.safeTransfer(msg.sender, borrowValueInWETH + liquidationPenalty);
         WETH.safeTransfer(user, supplyBalance - borrowValueInWETH - liquidationPenalty);
-
-        totalSupply -= account.supply;
-        account.supply = 0;
-        account.supplyIndex = 0;
 
         _updateInterestAccrued();
     }
