@@ -263,7 +263,8 @@ contract GhoBorrowVault is OwnableUpgradeable, IGhoBorrowVault {
 
     /**
      * @notice calculates the new debt/supply interest accrued since last accrual and splits the interest proportionally among the users
-     * It calculate interest per supply and borrow token and adds it to global supply and borrow indexes respectively
+     * based on their balance as weight
+     * @dev calculate interest per supply and borrow token and adds it to global supply and borrow indexes respectively
      */
     function accrueInterest() public {
         uint256 borrowBalance = vGHO.balanceOf(address(this));
