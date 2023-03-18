@@ -286,7 +286,7 @@ contract GhoBorrowVault is OwnableUpgradeable, IGhoBorrowVault {
     }
 
     /**
-     * @notice updates record of last supply/borrow interest accrual to current supply/borrow interest 
+     * @notice sets total supply/borrow interest accrued to current supply/borrow interest 
      */
     function _updateInterestAccrued() internal {
         uint256 borrowBalance = vGHO.balanceOf(address(this));
