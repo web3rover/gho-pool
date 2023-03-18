@@ -77,10 +77,10 @@ contract GhoBorrowVault is OwnableUpgradeable, IGhoBorrowVault {
     /// @notice global borrow index
     uint256 internal borrowIndex;
 
-    /// @notice total supply interest splitted amount users
+    /// @notice total supply interest accrued
     uint256 internal totalSupplyInterestAccrued;
 
-    /// @notice total borrow interest splitted amount users
+    /// @notice total borrow interest accrued
     uint256 internal totalBorrowInterestAccrued;
 
     /// @notice total supply of WETH by all users
