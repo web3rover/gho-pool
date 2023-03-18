@@ -12,9 +12,6 @@ import "./interfaces/IGhoBorrowVault.sol";
 contract GhoBorrowVault is OwnableUpgradeable, IGhoBorrowVault {
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
-    /// @notice 1 in fixed-point representation 
-    uint256 internal constant EXP_SCALE = 1e18;
-
     /// @notice initial index value
     uint256 internal constant INITIAL_INDEX = 1e18;
 
