@@ -5,6 +5,7 @@ This project demonstrates design of smart contracts system that allows stkAave h
 To run the forked e2e tests you need to get RPC URL from Alchemy for Goerli testnet. Then copy it to the `.env` file. After than run the following command to run the tests:
 
 ```
+npm install
 npx hardhat test
 ```
 
